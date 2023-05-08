@@ -1,0 +1,93 @@
+/*1.Identify the most prevalent hashtags:*/
+MATCH (t:Tweet)-[:TAGS]->(h:Hashtag)
+WITH h, count(t) AS num_tweets
+RETURN h.name AS hashtag, num_tweets
+ORDER BY num_tweets DESC
+LIMIT 5;
+
+/*2.Find the top users with the highest betweenness centrality*/
+MATCH (u:User)
+RETURN u.screen_name AS user, u.betweenness AS betweenness_centrality
+ORDER BY betweenness_centrality DESC
+LIMIT 5;
+
+/*3.Uncover users who have posted the most tweets.:*/
+MATCH (u:User)-[:POSTS]->(t:Tweet)
+RETURN u.screen_name AS user, count(*) AS tweet_count
+ORDER BY tweet_count DESC
+LIMIT 5;
+
+/*4.Finding the most frequently shared links in tweets*/
+MATCH (l:Link)<-[:CONTAINS]-(t:Tweet)
+RETURN l.url AS url, count(*) AS share_count
+ORDER BY share_count DESC
+LIMIT 5;
+
+/*5.The most commonly used sources for tweeting:*/
+MATCH (s:Source)<-[:USING]-(t:Tweet)
+RETURN s.name AS source, count(*) AS usage_count
+ORDER BY usage_count DESC
+LIMIT 5;
+
+/*6.Users who mention users with the highest follower counts*/
+MATCH (u1:User)-[:POSTS]->(t:Tweet)-[:MENTIONS]->(u2:User)
+WITH u1, u2, count(t) AS num_mentions
+WITH u1, sum(u2.followers) AS total_mentioned_followers
+RETURN u1.name AS user_name, u1.followers AS user_followers, total_mentioned_followers
+ORDER BY total_mentioned_followers DESC
+LIMIT 10;
+
+
+/*7. Find the most common locations of users*/
+MATCH (u:User)
+WHERE NOT u.location IS NULL
+WITH u.location AS location, count(u) AS num_users
+RETURN location, num_users
+ORDER BY num_users DESC
+LIMIT 3;
+
+/*8.Most popular Users and Their Most Mentioned Users: */
+MATCH (u1:User)-[:POSTS]->(t:Tweet)
+WITH u1, COUNT(t) AS totalTweets
+ORDER BY totalTweets DESC
+LIMIT 5
+MATCH (u1)-[:POSTS]->(t:Tweet)-[:MENTIONS]->(u2:User)
+WITH u1, u2, COUNT(t) AS mentions
+ORDER BY mentions DESC
+RETURN u1.screen_name AS topUser, u2.screen_name AS mentionedUser, mentions
+LIMIT 15;
+
+
+/*9. Top User Amplifying Others and Amplified Users.*/
+MATCH (u1:User)-[:AMPLIFIES]->(u2:User)
+WITH u1, count(u2) AS num_amplifies, COLLECT(u2.screen_name) AS amplified_users
+ORDER BY num_amplifies DESC
+LIMIT 1
+WITH u1.screen_name AS top_user, num_amplifies, amplified_users
+UNWIND amplified_users[0..5] AS five_amplified_users
+RETURN top_user, num_amplifies, five_amplified_users;
+
+
+/* 10.Users with the Highest Engagement Rate per Tweet */
+MATCH (user:User)-[:POSTS]->(tweet:Tweet)
+OPTIONAL MATCH (tweet)<-[:RETWEETS|REPLY_TO|RT_MENTIONS]-(:Tweet)
+WITH user, tweet, COUNT(DISTINCT id(tweet)) AS interactions, COUNT(DISTINCT [(tweet)<-[:RT_MENTIONS]-(:Tweet) | 1]) AS retweets, COUNT(DISTINCT [(tweet)<-[:REPLY_TO]-(:Tweet) | 1]) AS replies
+WITH user, tweet, interactions, retweets, replies, toFloat(tweet.favorites + retweets) / toFloat(tweet.favorites + retweets + replies + interactions + 1) AS engagementRate
+WHERE tweet.favorites + retweets + replies + interactions > 0
+RETURN user.name AS userName, user.screen_name AS screenName, user.profile_image_url AS profileImageUrl, AVG(engagementRate) AS avgEngagementRate
+ORDER BY avgEngagementRate DESC
+LIMIT 4;
+
+/* 11.Mutual Interaction Clusters among Users with Common Connections */
+MATCH (u1:User)-[:INTERACTS_WITH]->(u2:User)
+WITH u1, COUNT(DISTINCT u2) AS num_interactions
+WHERE num_interactions >= 5
+WITH COLLECT(u1) AS users
+UNWIND users AS user1
+UNWIND users AS user2
+MATCH (user1)-[:INTERACTS_WITH]-(shared)-[:INTERACTS_WITH]-(user2)
+WHERE user1 <> user2
+WITH user1, user2, COLLECT(DISTINCT shared) AS shared_interactions
+WHERE SIZE(shared_interactions) >= 5
+RETURN user1.name AS User1, user2.name AS User2, shared_interactions;
+
